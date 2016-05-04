@@ -20,9 +20,10 @@ YOUTUBE_DEVELOPER_KEY = conf.get("config", "youtube_api_key")
 YOUTUBE_API_SERVICE_NAME = "youtube"
 YOUTUBE_API_VERSION = "v3"
 LAST_FM_API_KEY = conf.get("config", "lastfm_api_key")
-LAST_FM_TIME = time.time()-15000 # about an hour
+# LAST_FM_TIME = str(0)
+LAST_FM_TIME = str(time.time()-4000)
 CSV_DB = conf.get("config", "csv_database")
-USERS = ["intel17"]
+USERS = ["intel17", "under_your_tree"]
 DOWNLOAD_PATTERN = "./downloads/%(id)s.%(ext)s"
 LOG_FILE = conf.get("config", "log_file")
 
@@ -43,28 +44,43 @@ def youtube_search(track, max_results):
 			# Return the first found video id.
 			return("%s" % (search_result["id"]["videoId"]))
 
-def lastfm_search():
+def lastfm_top():
 	rtn = []
+	url_base = "http://ws.audioscrobbler.com/2.0/?method=user.gettoptracks&period=overall"
 	for username in USERS:
-		res = urllib2.urlopen("http://ws.audioscrobbler.com/2.0/?method=user.getrecenttracks&user="+username+"&from="+str(LAST_FM_TIME)+"&api_key="+LAST_FM_API_KEY+"&format=json").read()
+		res = urllib2.urlopen(url_base+"&user="+username+"&limit=200"+"&api_key="+LAST_FM_API_KEY+"&format=json").read()
+		tracks = json.loads(res)
+
+		for track in tracks['toptracks']['track']:
+			name   = track['name'].encode('utf-8')
+			artist = track['artist']['name'].encode('utf-8')
+			nice   = name + " by " + artist
+			rtn.append([name, artist, nice, username])
+	return rtn 
+
+def lastfm_latest():
+	rtn = []
+	url_base = "http://ws.audioscrobbler.com/2.0/?method=user.getrecenttracks"
+	for username in USERS:
+		res = urllib2.urlopen(url_base+"&user="+username+"&limit=200&from="+LAST_FM_TIME+"&api_key="+LAST_FM_API_KEY+"&format=json").read()
 		# TODO: Check those errors.
 		recent_played = json.loads(res)
-		tracks = recent_played['recenttracks']['track']
 
-		for t in tracks: 
-				rtn.append([t['name'],t['artist']['#text']])
-				print rtn[-1][0], "by", rtn[-1][1]
+		for track in recent_played['recenttracks']['track']:
+				name   = track['name'].encode('utf-8')
+				artist = track['artist']['#text'].encode('utf-8')
+				nice   = name + " by " + artist
+				rtn.append([name, artist, nice, username])
 	return rtn
 
 def download_track_id(id):
 	return subprocess.call(["/usr/bin/youtube-dl", "-o", DOWNLOAD_PATTERN, id, "--write-info-json", "--add-metadata", "-x", "--audio-format", "mp3"])
 
-
-def insert_track(id, track, artist):
+def insert_track(id, track):
 	date = strftime("%Y-%m-%d %H:%M:%S", gmtime())
 	with open(CSV_DB, 'ab') as db:
 		writer = csv.writer(db)
-		writer.writerow([id, track, artist, date])
+		writer.writerow([id, track[0], track[1], date, track[3]])
 
 def track_exists(track):
 	with open(CSV_DB, 'rb') as db:
@@ -75,15 +91,13 @@ def track_exists(track):
 	return False
 
 # Main
-tracks = lastfm_search()
+tracks = lastfm_top()
 for track in tracks:
-	track_nice = track[0] + " by " + track[1]
-	print track_nice
 	if not track_exists(track):
-		id = youtube_search(track_nice, "1") 
-		if download_track_id(id) == 0:
-			insert_track(id, track[0], track[1])
+		id = youtube_search(track[2], "1") 
+		if id and download_track_id(id) == 0:
+			insert_track(id, track)
 		else:
-			print "Unable to download track - ", track_nice, id
+			print "Unable to download track - ", track[2], id
 	else: 
-		print "Track exists - ", track_nice
+		print "Track exists - ", track[2]

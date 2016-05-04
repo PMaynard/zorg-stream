@@ -12,6 +12,7 @@ from apiclient.errors import HttpError
 from oauth2client.tools import argparser
 import ConfigParser
 import csv
+import re 
 
 conf = ConfigParser.ConfigParser()
 conf.read('./config.ini')
@@ -26,12 +27,15 @@ CSV_DB = conf.get("config", "csv_database")
 USERS = ["intel17", "under_your_tree"]
 DOWNLOAD_PATTERN = "./downloads/%(id)s.%(ext)s"
 LOG_FILE = conf.get("config", "log_file")
+KEYWORDS_WANTED = ["official", "OFFICIAL", ",hd"]
+KEYWORDS_IGNORE = ["live", "remix"]
 
-def youtube_search(track, max_results):
+def youtube_search(query, max_results):
+	query += ', '.join(KEYWORDS_WANTED)
 	youtube = build(YOUTUBE_API_SERVICE_NAME, YOUTUBE_API_VERSION, developerKey=YOUTUBE_DEVELOPER_KEY)
 
 	search_response = youtube.search().list(
-		q=track,
+		q=query,
 		part="id,snippet",
 		maxResults=max_results
 	).execute()
@@ -40,9 +44,18 @@ def youtube_search(track, max_results):
 
 	for search_result in search_response.get("items", []):
 		if search_result["id"]["kind"] == "youtube#video":
-			print "[Y] ",search_result["id"]["videoId"], track
-			# Return the first found video id.
-			return("%s" % (search_result["id"]["videoId"]))
+			if youtube_filter(search_result["snippet"]["title"].encode('utf-8')):
+				print "[Y] Found Video ", search_result["snippet"]["title"].encode('utf-8')
+				return("%s" % (search_result["id"]["videoId"]))
+			
+def youtube_filter(title):
+	# print "Checking: ", title
+	for ignore in KEYWORDS_IGNORE:
+		if re.search(ignore, title, re.I):
+			# print "\tFailed:", title, "[", ignore, "]"
+			return False
+	# print "Passed: ", title
+	return True
 
 def lastfm_top():
 	rtn = []
@@ -54,7 +67,7 @@ def lastfm_top():
 		for track in tracks['toptracks']['track']:
 			name   = track['name'].encode('utf-8')
 			artist = track['artist']['name'].encode('utf-8')
-			nice   = name + " by " + artist
+			nice   = name + " by " + artist + " "
 			rtn.append([name, artist, nice, username])
 	return rtn 
 
@@ -69,7 +82,8 @@ def lastfm_latest():
 		for track in recent_played['recenttracks']['track']:
 				name   = track['name'].encode('utf-8')
 				artist = track['artist']['#text'].encode('utf-8')
-				nice   = name + " by " + artist
+				nice   = name + " by " + artist + " "
+				print "[L] ", nice, " From ", username
 				rtn.append([name, artist, nice, username])
 	return rtn
 
@@ -94,7 +108,7 @@ def track_exists(track):
 tracks = lastfm_top()
 for track in tracks:
 	if not track_exists(track):
-		id = youtube_search(track[2], "1") 
+		id = youtube_search(track[2], "5") 
 		if id and download_track_id(id) == 0:
 			insert_track(id, track)
 		else:

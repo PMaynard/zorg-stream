@@ -23,12 +23,14 @@ YOUTUBE_API_VERSION = "v3"
 LAST_FM_API_KEY = conf.get("config", "lastfm_api_key")
 # LAST_FM_TIME = str(0)
 LAST_FM_TIME = str(time.time()-4000)
+# overall | 7day | 1month | 3month | 6month | 12month
+LAST_FM_TOP = "7day" 
 CSV_DB = conf.get("config", "csv_database")
 USERS = ["intel17", "under_your_tree"]
 DOWNLOAD_PATTERN = "./downloads/%(id)s.%(ext)s"
 LOG_FILE = conf.get("config", "log_file")
 KEYWORDS_WANTED = ["official", "OFFICIAL", ",hd"]
-KEYWORDS_IGNORE = ["live", "remix"]
+KEYWORDS_IGNORE = ["live", "remix", "full", "album"]
 
 def youtube_search(query, max_results):
 	query += ', '.join(KEYWORDS_WANTED)
@@ -57,9 +59,9 @@ def youtube_filter(title):
 	# print "Passed: ", title
 	return True
 
-def lastfm_top():
+def lastfm_top(period):
 	rtn = []
-	url_base = "http://ws.audioscrobbler.com/2.0/?method=user.gettoptracks&period=overall"
+	url_base = "http://ws.audioscrobbler.com/2.0/?method=user.gettoptracks&period="+period
 	for username in USERS:
 		res = urllib2.urlopen(url_base+"&user="+username+"&limit=200"+"&api_key="+LAST_FM_API_KEY+"&format=json").read()
 		tracks = json.loads(res)
@@ -68,6 +70,7 @@ def lastfm_top():
 			name   = track['name'].encode('utf-8')
 			artist = track['artist']['name'].encode('utf-8')
 			nice   = name + " by " + artist + " "
+			print "[L] ", nice, " From ", username
 			rtn.append([name, artist, nice, username])
 	return rtn 
 
@@ -104,14 +107,24 @@ def track_exists(track):
 				return True
 	return False
 
-# Main
-tracks = lastfm_top()
-for track in tracks:
-	if not track_exists(track):
-		id = youtube_search(track[2], "5") 
-		if id and download_track_id(id) == 0:
-			insert_track(id, track)
-		else:
-			print "Unable to download track - ", track[2], id
-	else: 
-		print "Track exists - ", track[2]
+def proccess_tracks(tracks):
+	for track in tracks:
+		if not track_exists(track):
+			id = youtube_search(track[2], "5") 
+			if id and download_track_id(id) == 0:
+				insert_track(id, track)
+			else:
+				print "Unable to download track - ", track[2], id
+		else: 
+			print "Track exists - ", track[2]
+
+print "[----] Last FM Top "+LAST_FM_TOP
+top = lastfm_top(LAST_FM_TOP) 
+print "[----] Last FM Latest"
+latest = lastfm_latest()
+
+print "[----] Downlading Latest"
+proccess_tracks(latest)
+print "[----] Downlading Top"
+proccess_tracks(top)
+

@@ -29,34 +29,36 @@ CSV_DB = conf.get("config", "csv_database")
 USERS = ["intel17", "under_your_tree"]
 DOWNLOAD_PATTERN = "./downloads/%(id)s.%(ext)s"
 LOG_FILE = conf.get("config", "log_file")
-KEYWORDS_WANTED = ["official", "OFFICIAL", ",hd"]
+KEYWORDS_WANTED = ["official", "OFFICIAL"]
 KEYWORDS_IGNORE = ["live", "remix", "full", "album"]
 
 def youtube_search(query, max_results):
-	query += ', '.join(KEYWORDS_WANTED)
+	# Build up the query.
+	query += '|'.join(KEYWORDS_WANTED)
+	for k in KEYWORDS_IGNORE:
+		query += " -"+k
+
 	youtube = build(YOUTUBE_API_SERVICE_NAME, YOUTUBE_API_VERSION, developerKey=YOUTUBE_DEVELOPER_KEY)
 
 	search_response = youtube.search().list(
 		q=query,
 		part="id,snippet",
+		videoDefinition="high",
+		type="video",
+		order="rating",
 		maxResults=max_results
 	).execute()
 
-	videos = []
-
 	for search_result in search_response.get("items", []):
-		if search_result["id"]["kind"] == "youtube#video":
-			if youtube_filter(search_result["snippet"]["title"].encode('utf-8')):
-				print "[Y] Found Video ", search_result["snippet"]["title"].encode('utf-8')
-				return("%s" % (search_result["id"]["videoId"]))
+		print "[Y] Result Video ", search_result["snippet"]["title"].encode('utf-8')
+		if youtube_filter(search_result["snippet"]["title"].encode('utf-8')):
+			return("%s" % (search_result["id"]["videoId"]))
+	print ("[Y] No result for: \n>\t%s" % query)
 			
 def youtube_filter(title):
-	# print "Checking: ", title
 	for ignore in KEYWORDS_IGNORE:
 		if re.search(ignore, title, re.I):
-			# print "\tFailed:", title, "[", ignore, "]"
 			return False
-	# print "Passed: ", title
 	return True
 
 def lastfm_top(period):
@@ -110,7 +112,7 @@ def track_exists(track):
 def proccess_tracks(tracks):
 	for track in tracks:
 		if not track_exists(track):
-			id = youtube_search(track[2], "5") 
+			id = youtube_search(track[2], "50")
 			if id and download_track_id(id) == 0:
 				insert_track(id, track)
 			else:
